@@ -396,6 +396,35 @@ public class ApiTest {
     }
 
     @Test
+    public void testGetBalanceAfterDeposit(TestContext context) {
+        final Async async = context.async();
+        createAccount()
+                .map(this::getEntityId)
+                .flatMap(accountId -> deposit(accountId, 1000)
+                        .flatMap(response -> getBalance(accountId)))
+                .subscribe(response -> {
+                    JsonObject responseBody = response.bodyAsJsonObject();
+                    context.assertEquals(200, response.statusCode());
+                    context.assertEquals(1000, responseBody.getInteger("data"));
+                    async.complete();
+                });
+    }
+
+    @Test
+    public void testGetBalanceAfterDepositAccountNotFound(TestContext context) {
+        final Async async = context.async();
+        createAccount()
+                .map(this::getEntityId)
+                .flatMap(accountId -> deposit(accountId, 1000)
+                        .flatMap(response -> getBalance(3L)))
+                .subscribe(response -> {
+                    JsonObject responseBody = response.bodyAsJsonObject();
+                    context.assertEquals(404, response.statusCode());
+                    async.complete();
+                });
+    }
+
+    @Test
     public void testGetAccountWithBalanceAfterDepositWithdraw(TestContext context) {
         final Async async = context.async();
         createAccount()
@@ -481,6 +510,11 @@ public class ApiTest {
 
     private Single<HttpResponse<Buffer>> getAccount(Long accountId) {
         return Single.create(emitter -> client.get(port, "localhost", String.format("/accounts/%s", accountId))
+                .send(asyncResponse -> emitter.onSuccess(asyncResponse.result())));
+    }
+
+    private Single<HttpResponse<Buffer>> getBalance(Long accountId) {
+        return Single.create(emitter -> client.get(port, "localhost", String.format("/accounts/%s/balance", accountId))
                 .send(asyncResponse -> emitter.onSuccess(asyncResponse.result())));
     }
 

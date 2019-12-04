@@ -69,6 +69,18 @@ Response:
        "timestamp":<timestamp>
    }
    ```
+#### Get balance
+Request
+   ```
+   GET /accounts/:id/balance
+   ```
+   Response:
+   ```
+   {
+       "data":500
+       "timestamp":<timestamp>
+   }
+   ```
 #### Transfer
 Request
 ```
