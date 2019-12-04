@@ -40,7 +40,7 @@ public class RepositoryVerticle extends AbstractVerticle {
         vertx.eventBus().consumer(ACCOUNT_ADDR, message -> {
             Long accountId = (Long) message.body();
             if (accountNotExists(accountId)) {
-                message.fail(404, "Account not found");
+                accountNotFound(message);
             } else {
                 message.reply(getAccount(accountId));
             }
@@ -50,9 +50,9 @@ public class RepositoryVerticle extends AbstractVerticle {
             JsonObject balanceOperationJsonObj = (JsonObject) message.body();
             Long accountId = balanceOperationJsonObj.getLong(ACCOUNT_ID);
             if (accountNotExists(accountId)) {
-                message.fail(404, "Account not found");
+                accountNotFound(message);
             } else if (notEnoughFunds(accountId, balanceOperationJsonObj)) {
-                message.fail(422, "Not enough funds");
+                notEnoughFunds(message);
             } else {
                 saveTransaction(message, balanceOperationJsonObj, accountId);
             }
@@ -61,7 +61,7 @@ public class RepositoryVerticle extends AbstractVerticle {
         vertx.eventBus().consumer(BALANCE_ADDR, message -> {
             Long accountId = (Long) message.body();
             if (accountNotExists(accountId)) {
-                message.fail(404, "Account not found");
+                accountNotFound(message);
             } else {
                 JsonObject account = (JsonObject) accounts().get(accountId);
                 message.reply(account.getLong(BALANCE));
@@ -73,9 +73,9 @@ public class RepositoryVerticle extends AbstractVerticle {
             Long senderAccountId = transferRequest.getLong(SENDER_ACCOUNT_ID);
             Long receiverAccountId = transferRequest.getLong(RECEIVER_ACCOUNT_ID);
             if (accountNotExists(senderAccountId) || accountNotExists(receiverAccountId)) {
-                message.fail(404, "Account not found");
+                accountNotFound(message);
             } else if (notEnoughFunds(senderAccountId, transferRequest)) {
-                message.fail(422, "Not enough funds");
+                notEnoughFunds(message);
             } else {
                 saveTransaction(message, transferRequest, senderAccountId, receiverAccountId);
             }
@@ -84,7 +84,7 @@ public class RepositoryVerticle extends AbstractVerticle {
         vertx.eventBus().consumer(TRANSACTIONS_ADDR, message -> {
             Long accountId = (Long) message.body();
             if (accountNotExists(accountId)) {
-                message.fail(404, "Account not found");
+                accountNotFound(message);
             } else {
                 vertx.sharedData().getCounter(TRANSACTIONS_COUNTER, counter -> counter.result().get(count -> {
                     LocalMap<Object, Object> transactionsMap = transactions();
@@ -153,6 +153,14 @@ public class RepositoryVerticle extends AbstractVerticle {
 
     private void saveAccount(Long accountId, JsonObject account) {
         accounts().put(accountId, account);
+    }
+
+    private void accountNotFound(Message message) {
+        message.fail(404, "Account not found");
+    }
+
+    private void notEnoughFunds(Message message) {
+        message.fail(422, "Not enough funds");
     }
 
     private Integer effectiveAmount(JsonObject transactionJsonObj, Long accountId) {
