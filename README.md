@@ -1,5 +1,5 @@
 # Sample money transfers service
-This is a simple money-transfer service exposing REST API. 
+This is a simple money-transfer service that exposes REST API. 
 Service is implemented with Vert.x toolset and uses Vert.x LocalMap as in-memory data storage.
 
 ## Build
