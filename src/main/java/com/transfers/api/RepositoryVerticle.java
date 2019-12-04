@@ -1,5 +1,6 @@
 package com.transfers.api;
 
+import com.transfers.api.util.Operation;
 import io.reactivex.Flowable;
 import io.reactivex.functions.Consumer;
 import io.vertx.core.AbstractVerticle;
@@ -11,22 +12,26 @@ import io.vertx.core.shareddata.LocalMap;
 import java.time.Instant;
 import java.util.Arrays;
 
-import static com.transfers.api.model.Address.*;
+import static com.transfers.api.util.Address.*;
+import static com.transfers.api.util.Consts.*;
 
 public class RepositoryVerticle extends AbstractVerticle {
 
-    private static final String ACCOUNT_PROFILE_FORMAT = "account:%s:profile";
     private static final String ACCOUNTS_MAP = "accounts";
     private static final String TRANSACTIONS_MAP = "transactions";
+
+    private static final String ACCOUNTS_COUNTER = "account";
+    private static final String TRANSACTIONS_COUNTER = "transaction";
+
 
     @Override
     public void start() {
         vertx.eventBus().consumer(NEW_ACCOUNT_ADDR, message -> {
-            vertx.sharedData().getCounter("account", counter -> counter.result().incrementAndGet(count -> {
+            vertx.sharedData().getCounter(ACCOUNTS_COUNTER, counter -> counter.result().incrementAndGet(count -> {
                 Long accountId = count.result();
                 JsonObject account = ((JsonObject) message.body())
-                        .put("id", accountId)
-                        .put("balance", 0);
+                        .put(ID, accountId)
+                        .put(BALANCE, 0);
                 saveAccount(accountId, account);
                 message.reply(accountId);
             }));
@@ -43,7 +48,7 @@ public class RepositoryVerticle extends AbstractVerticle {
 
         vertx.eventBus().consumer(BALANCE_OPERATION_ADDR, message -> {
             JsonObject balanceOperationJsonObj = (JsonObject) message.body();
-            Long accountId = balanceOperationJsonObj.getLong("accountId");
+            Long accountId = balanceOperationJsonObj.getLong(ACCOUNT_ID);
             if (accountNotExists(accountId)) {
                 message.fail(404, "Account not found");
             } else if (notEnoughFunds(accountId, balanceOperationJsonObj)) {
@@ -58,15 +63,15 @@ public class RepositoryVerticle extends AbstractVerticle {
             if (accountNotExists(accountId)) {
                 message.fail(404, "Account not found");
             } else {
-                JsonObject account = (JsonObject) accounts().get(String.format(ACCOUNT_PROFILE_FORMAT, accountId));
-                message.reply(account.getLong("balance"));
+                JsonObject account = (JsonObject) accounts().get(accountId);
+                message.reply(account.getLong(BALANCE));
             }
         });
 
         vertx.eventBus().consumer(NEW_TRANSFER_ADDR, message -> {
             JsonObject transferRequest = (JsonObject) message.body();
-            Long senderAccountId = transferRequest.getLong("senderAccountId");
-            Long receiverAccountId = transferRequest.getLong("receiverAccountId");
+            Long senderAccountId = transferRequest.getLong(SENDER_ACCOUNT_ID);
+            Long receiverAccountId = transferRequest.getLong(RECEIVER_ACCOUNT_ID);
             if (accountNotExists(senderAccountId) || accountNotExists(receiverAccountId)) {
                 message.fail(404, "Account not found");
             } else if (notEnoughFunds(senderAccountId, transferRequest)) {
@@ -81,7 +86,7 @@ public class RepositoryVerticle extends AbstractVerticle {
             if (accountNotExists(accountId)) {
                 message.fail(404, "Account not found");
             } else {
-                vertx.sharedData().getCounter("transaction", counter -> counter.result().get(count -> {
+                vertx.sharedData().getCounter(TRANSACTIONS_COUNTER, counter -> counter.result().get(count -> {
                     LocalMap<Object, Object> transactionsMap = transactions();
                     Long lastId = count.result();
                     Flowable.rangeLong(1, lastId)
@@ -100,14 +105,14 @@ public class RepositoryVerticle extends AbstractVerticle {
     private boolean notEnoughFunds(Long accountId, JsonObject balanceOperationJsonObj) {
         JsonObject account = getAccount(accountId);
         Integer effectiveAmmount = effectiveAmount(balanceOperationJsonObj, accountId);
-        return (effectiveAmmount < 0 && account.getLong("balance") < Math.abs(effectiveAmmount));
+        return (effectiveAmmount < 0 && account.getLong(BALANCE) < Math.abs(effectiveAmmount));
     }
 
     private void saveTransaction(Message<Object> message, JsonObject transactionJsonObj, Long... relatedAccountIds) {
-        vertx.sharedData().getCounter("transaction", counter -> counter.result().incrementAndGet(count -> {
+        vertx.sharedData().getCounter(TRANSACTIONS_COUNTER, counter -> counter.result().incrementAndGet(count -> {
             Long transactionId = count.result();
-            transactionJsonObj.put("id", transactionId);
-            transactionJsonObj.put("timestamp", Instant.now().getEpochSecond());
+            transactionJsonObj.put(ID, transactionId);
+            transactionJsonObj.put(TIMESTAMP, Instant.now().getEpochSecond());
             transactions().put(transactionId, transactionJsonObj);
             updateBalance(transactionJsonObj, relatedAccountIds);
             message.reply(transactionId);
@@ -119,15 +124,15 @@ public class RepositoryVerticle extends AbstractVerticle {
                 .forEach(accountId -> {
                     Integer effectiveAmount = effectiveAmount(transactionJsonObj, accountId);
                     JsonObject account = getAccount(accountId);
-                    account.put("balance", account.getLong("balance") + effectiveAmount);
+                    account.put(BALANCE, account.getLong(BALANCE) + effectiveAmount);
                     saveAccount(accountId, account);
                 });
     }
 
     private boolean belongsToAccount(JsonObject transaction, Long accountId) {
-        return accountId.equals(transaction.getLong("accountId")) ||
-                accountId.equals(transaction.getLong("senderAccountId")) ||
-                accountId.equals(transaction.getLong("receiverAccountId"));
+        return accountId.equals(transaction.getLong(ACCOUNT_ID)) ||
+                accountId.equals(transaction.getLong(SENDER_ACCOUNT_ID)) ||
+                accountId.equals(transaction.getLong(RECEIVER_ACCOUNT_ID));
     }
 
     private LocalMap<Object, Object> transactions() {
@@ -139,22 +144,22 @@ public class RepositoryVerticle extends AbstractVerticle {
     }
 
     private boolean accountNotExists(Long accountId) {
-        return !accounts().containsKey(String.format(ACCOUNT_PROFILE_FORMAT, accountId));
+        return !accounts().containsKey(accountId);
     }
 
     private JsonObject getAccount(Long accountId) {
-        return (JsonObject) accounts().get(String.format(ACCOUNT_PROFILE_FORMAT, accountId));
+        return (JsonObject) accounts().get(accountId);
     }
 
     private void saveAccount(Long accountId, JsonObject account) {
-        accounts().put(String.format(ACCOUNT_PROFILE_FORMAT, accountId), account);
+        accounts().put(accountId, account);
     }
 
     private Integer effectiveAmount(JsonObject transactionJsonObj, Long accountId) {
-        Integer amount = transactionJsonObj.getInteger("amount");
-        String operation = transactionJsonObj.getString("operation");
-        Long senderAccountId = transactionJsonObj.getLong("senderAccountId");
-        if ("withdraw".equals(operation) || accountId.equals(senderAccountId)) {
+        Integer amount = transactionJsonObj.getInteger(AMOUNT);
+        String operation = transactionJsonObj.getString(OPERATION);
+        Long senderAccountId = transactionJsonObj.getLong(SENDER_ACCOUNT_ID);
+        if (Operation.withdraw.name().equals(operation) || accountId.equals(senderAccountId)) {
             amount = -amount;
         }
         return amount;
@@ -162,9 +167,9 @@ public class RepositoryVerticle extends AbstractVerticle {
 
     private JsonObject toHistoryRow(JsonObject transaction, Long accountId) {
         return new JsonObject()
-                .put("id", transaction.getLong("id"))
-                .put("timestamp", transaction.getLong("timestamp"))
-                .put("operation", transaction.getString("operation"))
-                .put("amount", effectiveAmount(transaction, accountId));
+                .put(ID, transaction.getLong(ID))
+                .put(TIMESTAMP, transaction.getLong(TIMESTAMP))
+                .put(OPERATION, transaction.getString(OPERATION))
+                .put(AMOUNT, effectiveAmount(transaction, accountId));
     }
 }

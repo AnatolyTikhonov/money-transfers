@@ -1,4 +1,4 @@
-package com.transfers.api.model;
+package com.transfers.api.util;
 
 public class Address {
     public static final String NEW_ACCOUNT_ADDR = "new-account";

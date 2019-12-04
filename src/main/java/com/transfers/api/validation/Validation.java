@@ -1,11 +1,14 @@
 package com.transfers.api.validation;
 
+import com.transfers.api.util.Operation;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.web.RoutingContext;
 import io.vertx.ext.web.api.validation.CustomValidator;
 import io.vertx.ext.web.api.validation.HTTPRequestValidationHandler;
 import io.vertx.ext.web.api.validation.ParameterType;
 import io.vertx.ext.web.api.validation.ValidationException;
+
+import static com.transfers.api.util.Consts.*;
 
 public class Validation {
 
@@ -16,12 +19,12 @@ public class Validation {
 
     public static HTTPRequestValidationHandler getAccountValidationHandler() {
         return HTTPRequestValidationHandler.create()
-                .addPathParam("id", ParameterType.INT);
+                .addPathParam(ID, ParameterType.INT);
     }
 
     public static HTTPRequestValidationHandler balanceValidationHandler() {
         return HTTPRequestValidationHandler.create()
-                .addPathParam("id", ParameterType.INT)
+                .addPathParam(ID, ParameterType.INT)
                 .addCustomValidatorFunction(new BalanceOperationValidator())
                 .addJsonBodySchema("{\"type\":\"object\",\"properties\":{\"operation\":{\"type\":\"string\",\"minLength\":7,\"maxLength\":8},\"amount\":{\"type\":\"number\",\"multipleOf\":1.0,\"minimum\":1}},\"required\":[\"operation\",\"amount\"]}");
     }
@@ -35,9 +38,9 @@ public class Validation {
     private static class BalanceOperationValidator implements CustomValidator {
         @Override
         public void validate(RoutingContext rc) throws ValidationException {
-            String operation = rc.getBodyAsJson().getString("operation");
-            if (operation != null && !operation.equals("withdraw") && !operation.equals("deposit")) {
-                throw new ValidationException("Operation must be or 'deposit' or 'withdraw'");
+            String operation = rc.getBodyAsJson().getString(OPERATION);
+            if (operation != null && !operation.equals(Operation.withdraw.name()) && !operation.equals(Operation.deposit.name())) {
+                throw new ValidationException(String.format("Operation must be or '%s' or '%s'", Operation.deposit.name(), Operation.withdraw.name()));
             }
         }
     }
@@ -46,8 +49,8 @@ public class Validation {
         @Override
         public void validate(RoutingContext rc) throws ValidationException {
             JsonObject transferJsonObj = rc.getBodyAsJson();
-            Long senderAccountId = transferJsonObj.getLong("senderAccountId");
-            Long receiverAccountId = transferJsonObj.getLong("receiverAccountId");
+            Long senderAccountId = transferJsonObj.getLong(SENDER_ACCOUNT_ID);
+            Long receiverAccountId = transferJsonObj.getLong(RECEIVER_ACCOUNT_ID);
             if (senderAccountId != null && senderAccountId.equals(receiverAccountId)) {
                 throw new ValidationException("Sender and receiver accounts must be different");
             }

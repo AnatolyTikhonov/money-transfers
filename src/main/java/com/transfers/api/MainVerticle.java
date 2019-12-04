@@ -1,5 +1,6 @@
 package com.transfers.api;
 
+import com.transfers.api.util.Operation;
 import com.transfers.api.validation.Validation;
 import io.vertx.core.*;
 import io.vertx.core.eventbus.Message;
@@ -14,7 +15,8 @@ import io.vertx.ext.web.handler.BodyHandler;
 
 import java.time.Instant;
 
-import static com.transfers.api.model.Address.*;
+import static com.transfers.api.util.Address.*;
+import static com.transfers.api.util.Consts.*;
 
 public class MainVerticle extends AbstractVerticle {
 
@@ -27,7 +29,7 @@ public class MainVerticle extends AbstractVerticle {
                 .requestHandler(router)
                 .listen(config().getInteger("http.port", 8888));
 
-        // creating new account
+        // new account
         router.route().method(HttpMethod.POST).path("/accounts")
                 .handler(Validation.newAccountValidationHandler())
                 .handler(rc -> {
@@ -39,34 +41,34 @@ public class MainVerticle extends AbstractVerticle {
         router.route().method(HttpMethod.GET).path("/accounts/:id")
                 .handler(Validation.getAccountValidationHandler())
                 .handler(rc -> {
-                    Long id = ((RequestParameters) rc.get("parsedParameters")).pathParameter("id").getInteger().longValue();
+                    Long id = retrievePathParam(rc, ID);
                     vertx.eventBus().request(ACCOUNT_ADDR, id, handleResponse(rc, 200));
                 });
 
-        // user performs balance operations: deposit or withdraw money
+        // balance operations: deposit or withdraw money
         router.route().method(HttpMethod.POST).path("/accounts/:id/balance")
                 .handler(Validation.balanceValidationHandler())
                 .handler(rc -> {
-                    Long id = ((RequestParameters) rc.get("parsedParameters")).pathParameter("id").getInteger().longValue();
+                    Long accountId = retrievePathParam(rc, ID);
                     JsonObject balanceOperationJsonObj = rc.getBodyAsJson()
-                            .put("accountId", id);
+                            .put(ACCOUNT_ID, accountId);
                     vertx.eventBus().request(BALANCE_OPERATION_ADDR, balanceOperationJsonObj, handleResponse(rc, 200));
                 });
 
-        // get current balance
+        // get balance
         router.route().method(HttpMethod.GET).path("/accounts/:id/balance")
                 .handler(Validation.getAccountValidationHandler())
                 .handler(rc -> {
-                    Long accountId = ((RequestParameters) rc.get("parsedParameters")).pathParameter("id").getInteger().longValue();
+                    Long accountId = retrievePathParam(rc, ID);
                     vertx.eventBus().request(BALANCE_ADDR, accountId, handleResponse(rc, 200));
                 });
 
-        // perform transfer
+        // new transfer
         router.route().method(HttpMethod.POST).path("/transfers")
                 .handler(Validation.transferValidationHandler())
                 .handler(rc -> {
                     JsonObject transferJsonObj = rc.getBodyAsJson()
-                            .put("operation", "transfer");
+                            .put(OPERATION, Operation.transfer.name());
                     vertx.eventBus().request(NEW_TRANSFER_ADDR, transferJsonObj, handleResponse(rc, 200));
                 });
 
@@ -74,7 +76,7 @@ public class MainVerticle extends AbstractVerticle {
         router.route().method(HttpMethod.GET).path("/accounts/:id/transactions")
                 .handler(Validation.getAccountValidationHandler())
                 .handler(rc -> {
-                    Long accountId = ((RequestParameters) rc.get("parsedParameters")).pathParameter("id").getInteger().longValue();
+                    Long accountId = retrievePathParam(rc, ID);
                     vertx.eventBus().request(TRANSACTIONS_ADDR, accountId, handleResponse(rc, 200));
                 });
 
@@ -102,8 +104,8 @@ public class MainVerticle extends AbstractVerticle {
 
     private void replyWithBody(Integer status, Object responseBody, RoutingContext rc) {
         JsonObject response = new JsonObject()
-                .put("data", responseBody)
-                .put("timestamp", Instant.now().getEpochSecond());
+                .put(DATA, responseBody)
+                .put(TIMESTAMP, Instant.now().getEpochSecond());
         rc.response()
                 .putHeader("content-type", "application/json")
                 .setChunked(true)
@@ -121,6 +123,10 @@ public class MainVerticle extends AbstractVerticle {
                 replyWithError(cause.failureCode(), resp.cause(), rc);
             }
         };
+    }
+
+    private Long retrievePathParam(RoutingContext rc, String param) {
+        return ((RequestParameters) rc.get("parsedParameters")).pathParameter(param).getInteger().longValue();
     }
 
     public static void main(final String[] args) {
